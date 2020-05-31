@@ -5,7 +5,7 @@
     </head>
   <body>
 <script>
-var memory = new WebAssembly.Memory({initial:1024, maximum:10000});
+    var memory = new WebAssembly.Memory({initial:1024});
 var imports = {
     'env': {
         'memory': memory
@@ -22,6 +22,7 @@ fetch('sum.wasm').then(
 ).then(results => {
     const {asmSum, asmSum2 } = results.instance.exports;
     const wasmInstance = results.instance;
+    memory.grow(10000);
     console.log(wasmInstance);
     console.log(memory);
     function timeit(name,func,n) {
@@ -32,8 +33,8 @@ fetch('sum.wasm').then(
         var t1 = performance.now();
         console.log("Call to "+name+" took " + (t1 - t0) + " milliseconds.");
     }
-    const n = 1000000;
-    const p = 16;
+    const n = 10000000;
+    const p = 0;
     let typedArray = new Float64Array(memory.buffer,p,n*4);
     for (var i = 0 ; i < n; i++) {
         typedArray[i] = i;
@@ -57,6 +58,7 @@ fetch('sum.wasm').then(
     timeit("asmSum",function(){ asmSum(p,n) }, reps);
     timeit("asmSum2",function(){ asmSum2(p,n) }, reps);
 
+    
     
 }).catch(e => console.log(e));
 </script>
