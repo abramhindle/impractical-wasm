@@ -32,11 +32,11 @@ fetch('sum.wasm').then(
         var t1 = performance.now();
         console.log("Call to "+name+" took " + (t1 - t0) + " milliseconds.");
     }
-    const n = 100000;
+    const n = 1000000;
     const p = 16;
-    let typedArray = new Int32Array(memory.buffer,p,n*4);
+    let typedArray = new Float64Array(memory.buffer,p,n*4);
     for (var i = 0 ; i < n; i++) {
-        typedArray[i] = 100;
+        typedArray[i] = i;
     }
     function jsSum(arr,n) {
         var output = 0;
@@ -45,29 +45,19 @@ fetch('sum.wasm').then(
         }
         return output;
     };
-    const reps = 100;
+    const reps = 10;
     const m = n / 2;
-    for (var i = 1000 ; i < n; i+=1000) {
-        if (asmSum(p,i)!=jsSum(typedArray,i)) {
-            console.log(i,asmSum(p,i),jsSum(typedArray,i), asmSum(p,i)==jsSum(typedArray,i));
-            break;
-        }
-        if (asmSum2(p,i)!=jsSum(typedArray,i)) {
-            console.log(i,asmSum2(p,i),jsSum(typedArray,i), asmSum2(p,i)==jsSum(typedArray,i));
-            break;
-        }
-    }
+
+    console.log(asmSum(p,n),asmSum(p,n)==jsSum(typedArray,n));
     console.log(asmSum2(p,n),asmSum2(p,n)==jsSum(typedArray,n));
-    console.log(asmSum2(typedArray,n),asmSum2(typedArray,n)==jsSum(typedArray,n));
     console.log(jsSum(typedArray,n));
     
     
     timeit("jsSum",function(){ jsSum(typedArray,n) }, reps);
     timeit("asmSum",function(){ asmSum(p,n) }, reps);
-    timeit("asmSum",function(){ asmSum(p,n) }, reps);
     timeit("asmSum2",function(){ asmSum2(p,n) }, reps);
-    //timeit("asmSum2-t",function(){ asmSum2(typedArray,n) }, reps);
 
+    
 }).catch(e => console.log(e));
 </script>
 </body>
