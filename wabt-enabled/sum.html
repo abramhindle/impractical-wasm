@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+    <head>
+    <title>Sum.wasm w/ wabt</title>
+    <script src="libwabt.js"></script>
+    <script src="loadWat.js"></script>
+    </head>
+  <body>
+    <script>
+/*
+ * Copyright 2016 WebAssembly Community Group participants
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+var wabt = WabtModule();
+var memory = new WebAssembly.Memory({initial:10000});
+var imports = {
+    'env': {
+        'memory': memory
+    }
+};
+var l0 = performance.now();
+loadWatURL(wabt,'../sum.wat',imports,'sum.wat').then(results => {
+    var l1 = performance.now();
+    console.log("Retrieving, loading, assembling took " + (l1 - l0) + " milliseconds.");
+    const wasmInstance = results.instance;
+    const {asmSum, asmSum2 } = results.instance.exports;
+    memory.grow(10000);
+    console.log(wasmInstance);
+    console.log(memory);
+    function timeit(name,func,n) {
+        var t0 = performance.now();
+        for (var i = 0; i < n; i++) {
+            func();
+        }
+        var t1 = performance.now();
+        var time = t1 - t0;
+        var avg = time / (1.0*n);
+        console.log("Call to "+name+" took " + time + " milliseconds ("+avg+" ms per rep)");
+    }
+    const n = 10000000;
+    const p = 0;
+    let typedArray = new Float64Array(memory.buffer,p,n*4);
+    for (var i = 0 ; i < n; i++) {
+        typedArray[i] = i;
+    }
+    function jsSum(arr,n) {
+        var output = 0;
+        for (var i = 0 ; i < n; i++) {
+            output += arr[i];
+        }
+        return output;
+    };
+    const reps = 10;
+    const m = n / 2;
+
+    const wasmSum = (t,n) => asmSum(t.byteOffset, n);
+    const wasmSum2 = (t,n) => asmSum2(t.byteOffset, n);
+    console.log(wasmSum(typedArray,n),wasmSum(typedArray,n)==jsSum(typedArray,n));
+    console.log(wasmSum2(typedArray,n),wasmSum2(typedArray,n)==jsSum(typedArray,n));
+    console.log(jsSum(typedArray,n));
+
+    timeit("jsSum",function(){ jsSum(typedArray,n) }, reps);
+    timeit("wasmSum",function(){ wasmSum(typedArray,n) }, reps);
+    timeit("wasmSum2",function(){ wasmSum2(typedArray,n) }, reps);
+
+}).catch(e => console.log("Main:",e));
+</script>
+</body>
+</html>
+

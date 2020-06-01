@@ -51,8 +51,8 @@ fetch('mandel.wasm').then(
         }
         return (i == maxiter);
     };
-    const reps = 10000;
-    const iters = 10000;
+    const reps = 1000;
+    const iters = 100000;
     console.log(jsMandel(0,0,iters) == asmMandel(0,0,iters));
     console.log(jsMandel(2,1,iters) == asmMandel(2,1,iters));
         
