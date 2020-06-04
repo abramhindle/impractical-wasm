@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>reveal.js</title>
+
+		<link rel="stylesheet" href="reveal.js.dist/reset.css">
+		<link rel="stylesheet" href="reveal.js.dist/reveal.css">
+		<link rel="stylesheet" href="reveal.js.dist/theme/white.css" id="theme">
+
+		<!-- Theme used for syntax highlighted code -->
+		<link rel="stylesheet" href="reveal.js.dist/plugin/highlight/monokai.css" id="highlight-theme">
+	</head>
+	<body>
+                <button id="bstart">READY?</button>
+                <div class="reveal">
+			<div class="slides">
+			<section data-markdown="../README.md"
+                 		data-separator="^\n\n\n"
+                 		data-separator-vertical="^\n\n"
+                 		data-separator-notes="^Note:"
+                 		data-charset="utf-8">
+			</section>
+                        </div>
+		</div>
+                <script src="wabt-enabled/libwabt.js"></script>
+                <script src="wabt-enabled/loadWat.js"></script>
+
+		<script src="reveal.js.dist/reveal.js"></script>
+		<script src="reveal.js.dist/plugin/notes/notes.js"></script>
+		<script src="reveal.js.dist/plugin/markdown/markdown.js"></script>
+		<script src="reveal.js.dist/plugin/highlight/highlight.js"></script>
+		<script>
+// More info about initialization & config:
+// - https://revealjs.com/initialization/
+// - https://revealjs.com/config/
+Reveal.initialize({
+    hash: true,
+    // Learn about plugins: https://revealjs.com/plugins/
+    plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+});
+var wabt = WabtModule();
+var _installed = false;
+function installCustomHandlers()  {
+    if (_installed) {
+        return;
+    }
+    console.log("On load!");
+    let evalWasm = (text,ret) => {
+        return loadWatString(wabt, text, wasmMemory(), "example.wat").then(
+            results => {
+                const { main } = results.instance.exports;
+                return main();
+        });
+    };
+    var wasms = document.querySelectorAll(".wasm");
+    if (wasms.length < 1) {
+        return false; // we're not ready :(
+    }
+    console.log(wasms);
+    wasms = [...wasms];
+    wasms.map( w => {
+        var d = document.createElement("div");
+        var b = document.createElement("button");
+        var s = document.createElement("span");
+        b.textContent = "Eval";
+        console.log(b);
+        let report = e => {
+            console.log(e);
+            s.textContent = e;
+            return e;
+        };
+            
+        b.addEventListener("click", e => {
+            evalWasm(w.textContent).catch( e => { console.log(e); report(e); throw e; }).then( report );
+        });
+        d.appendChild(b);
+        d.appendChild(s);
+        w.parentElement.appendChild(d);
+    });
+    _installed = true;
+}
+function readyButton() {
+    document.getElementById("bstart").style.display = "none";
+    installCustomHandlers();
+};
+document.getElementById("bstart").onclick = readyButton;
+window.addEventListener("load", function() { window.setTimeout(readyButton, 5000); });
+
+                </script>
+	</body>
+</html>
