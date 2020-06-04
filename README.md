@@ -290,7 +290,8 @@ Most operations like add and subtract and division and constants are prefixed by
 ```wasm
 (module
   (func $main (export "main") (result i32)
-    (i32.add (i32.const 21) (i32.mul (i32.const 7) (i32.const 3)))))
+    (i32.add (i32.const 21) 
+             (i32.mul (i32.const 7) (i32.const 3)))))
 ```
 
 
@@ -356,39 +357,208 @@ available. Signed and unsigned are available
     (i32.div_s (i32.const 1024) (i32.const 24))))
 ```
 
-# br
+
+# Local Variables
+
+- You can declare local variables with `local`
+  - `(local $name type)`
+  - `(local $i i32)`
+- You can get them with `get_local`
+  - `(get_local $i)`
+- You can set them with `set_local`
+  - `(set_local $i (i32.const 0))`
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (local $i i32) ;; 0'd by default
+    (set_local $i (i32.add (get_local $i) (i32.const 42))) ;; 1
+    (get_local $i)))
+```
+
+
+# if statement
+
+- Typically a conditional is kind of painful in assembler.
+- In wasm it is pretty simple and it is an expression (it returns a value)
+
+```wasm
+(module
+  (func $even (param $x i32) (result i32)
+    (if (i32.rem_u (get_local $x) (i32.const 2))
+        (then (return (i32.const -1024)))
+        (else (return (i32.const 1024))))
+    (return (i32.const 0)))
+  (func $main (export "main") (result i32)
+    (call $even (i32.const 42))))
+```
+
+
+# if statement (return a value)
+
+- Typically a conditional is kind of painful in assembler.
+- In wasm it is pretty simple and it is an expression (it returns a value)
+
+```wasm
+(module
+  (func $even (param $x i32) (result i32)
+        ;; note we have to declare the result type
+        (if (result i32) (i32.rem_u (get_local $x) (i32.const 2))
+            (then (i32.const -1024))
+            (else (i32.const 1024))))
+
+  (func $main (export "main") (result i32)
+    (call $even (i32.const 41)))) ;; 41!
+```
+
+
+# looping with `loop`
+
+- `loop` gives you control flow to loop over a block 
+  it has multiple opcodes inside of it.
+  
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (local $i i32) ;; 0'd by default
+    (loop
+        (set_local $i 
+            (i32.add 
+                (get_local $i)
+                (i32.const 1))))
+    (get_local $i)))
+```
+
+Wait why didn't it loop? Well we have to jump for it to loop.
+
+
+# looping with `loop`, `br` 
+
+- `br` is branch, `br 0` means branch to the top of the loop or the end of the current condition.
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (local $i i32) ;; 0'd by default
+    (loop
+        (set_local $i 
+            (i32.add 
+                (get_local $i)
+                (i32.const 1)))
+        (if (i32.eq (get_local $i) (i32.const 1000))
+            (then (return (get_local $i)))) ;; early return
+        (br 0))
+    (get_local $i)))
+```
+
+
+# looping with `loop`, `br`, `block`, and `br_if`
+
+We don't need to use an if statment, `br_if` is branch if and will
+branch for us. It doesn't need an else branch.
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (local $i i32) ;; 0'd by default
+    (block
+        (loop
+            (set_local $i 
+                (i32.add 
+                    (get_local $i)
+                    (i32.const 1)))
+           (br_if 1 (i32.eq (get_local $i) (i32.const 1042)))
+           (br 0)))
+    (get_local $i)))
+```
+
+
+# looping with `loop`, `br`, `block`, and `br_if`
+
+We don't need to use an if statment, `br_if` is branch if and will
+branch for us. It doesn't need an else branch.
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (local $i i32) ;; 0'd by default
+    (block $outer ;; oh is this a label
+        (loop ;; this is an infinite loop
+            (block $inner ;; oh is this a albel?
+                (loop
+                    (set_local $i 
+                        (i32.add 
+                            (get_local $i)
+                            (i32.const 1)))
+                    (br_if $outer ;; hop to outer loop if
+                        (i32.eq (get_local $i) (i32.const 1042)))
+                    (br 0)))
+           (br 0))) ;; end of $outer loop
+    (get_local $i)))
+```
 
 
 # comparisons
 
-
-# [ ] Functions
-
-
-
-
-# where are the variables
-- where are the arrays
-- where are the functions
-- where is the code of the functions
+- `lt` - less than (f64, f32) `lt_s` and `lt_u` (signed and unsigned) for integers
+- `gt` - greater than (f64, f32) `gt_s` and `gt_u` (signed and unsigned) for integers
+- `le` - less than or equal (f64, f32) `le_s` and `le_u` (signed and unsigned) for integers
+- `ge` - greater than or equal (f64, f32) `ge_s` and `ge_u` (signed and unsigned) for integers
+- `eq` - equal 
+- `eqz` - equal to zero
 
 
-# [ ] Linear Memory
+# comparisons
+
+- eqz
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (local $i i32) ;; 0'd by default
+    (if (result i32) 
+        (i32.eqz (get_local $i))
+        (then (i32.const 10000))
+        (else (i32.const -6)))))
+```
+
+- signed greater than
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (if (result i32) 
+        (i32.gt_s (i32.const -1) (i32.const 1))
+        (then (i32.const 1))
+        (else (i32.const -1)))))
+```
+
+- unsigned greater than
+
+```wasm
+(module
+  (func $main (export "main") (result i32)
+    (if (result i32) 
+        (i32.gt_u (i32.const -1) (i32.const 1))
+        (then (i32.const 1))
+        (else (i32.const -1)))))
+```
 
 
-# [ ] Wabt
+# Linear Memory
+
+# Arrays
+
+# Browser demo
 
 
-# [ ] Browser demo
-
-
-# [ ] Performance comments
+# Performance comments
 
 - Most performance is probably in productivity of reusing existing programs
 - Most performance is likely from faster load times
 
 
-# [ ] Where to look further
+# Where to look further
 - llvm
 - empscripten
 - rust
