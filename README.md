@@ -253,6 +253,7 @@ $ wat2wasm -v funcwarg.wat
 0000024: 0d                                        ; FIXUP section size
 ```
 
+
 # Memory Model
 
 WASM keeps a stack hidden from the wasm programmer. This stack
@@ -265,6 +266,7 @@ You cannot see:
 - parameter locations
 - locals
 - local locations
+
 
 # Memory Model
 
@@ -546,6 +548,23 @@ branch for us. It doesn't need an else branch.
 
 
 # Linear Memory
+
+As stated before you don't have access to the stack memory, where all
+your variables and function frames/ frame pointers reside.
+
+But you can declare memory and import it from javascript as well.
+
+- `memory` lets allocate pages of memory
+- each wasm module has its own memory
+
+```wasm
+(module
+    (import "env" "memory" (memory 1)) ;; 1 page of memory 
+    (func $main (export "main") (result f64)
+        (f64.store (i32.const 0) (f64.const 0.42))
+        (f64.load (i32.const 0))))
+```
+
 
 # Arrays
 
