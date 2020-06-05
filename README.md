@@ -552,9 +552,11 @@ branch for us. It doesn't need an else branch.
 As stated before you don't have access to the stack memory, where all
 your variables and function frames/ frame pointers reside.
 
-But you can declare memory and import it from javascript as well.
+But you can declare memory and import it from javascript as well. You
+have access to it and its first address is 0. This makes null pointer
+checking kinda weird, so watch out.
 
-- `memory` lets allocate pages of memory
+- `memory` lets you allocate pages of memory
 - each wasm module has its own memory
 
 ```wasm
@@ -568,7 +570,457 @@ But you can declare memory and import it from javascript as well.
 
 # Arrays
 
-# Browser demo
+You can treat memory as an array and you can access it from Javascript
+
+```javascript
+var memory = new WebAssembly.Memory({initial:1024});
+var imports = {
+    'env': {
+        'memory': memory
+    }
+};
+fetch('sum.wasm').then(
+    response =>
+        response.arrayBuffer()
+).then(bytes =>
+       WebAssembly.instantiate(bytes, imports)
+).then(results => {
+    const {asmSum, asmSum2 } = results.instance.exports;
+    let n = 1000;
+    let typedArray = new Float64Array(memory.buffer,0,n);
+    for (var i = 0 ; i < n; i++) {
+        typedArray[i] = i;
+    }
+    // those values are now in the wasm module's memory.
+    ...
+});
+```
+
+
+# Browser demo: sum.html
+
+- Let's look at [sum.wat](./sum.wat)
+- Let's look at [sum.wasm](./sum.wasm)
+  - You can make sum.wasm from the commandline: `wat2wasm sum.wat` 
+- Let's look at the JS of [sum.html](./wabt-enabled/sum.html)
+  - This example will compile the wasm itself
+- Performance wise it is somewhat close to javascript depending on the browser.
+
+
+# Browser demo: sum.wat
+
+```wasm
+(module
+  (import "env" "memory" (memory 512))
+  ;; (memory $memory (export "memory") 1)
+  (func $offset (param $arr i32) (param $i i32) (result i32)
+      (i32.add
+          (get_local $arr) 
+          (i32.mul (i32.const 8) (get_local $i))     
+      )
+  )
+  (func $asmSum (export "asmSum") (param $arr i32) (param $n i32) (result f64)
+      (local $i i32)
+      (local $o f64)
+      (set_local $i (i32.const 0))
+      (set_local $o (f64.const 0.0))
+      (block
+          (loop 
+              (set_local $o
+                  (f64.add
+                      (f64.load (call $offset (get_local $arr) (get_local $i)))
+                      (get_local $o)))
+              (set_local $i (i32.add (get_local $i) (i32.const 1)))
+              (br_if 1 (i32.eq (get_local $i) (get_local $n)))
+              (br 0)))
+      (get_local $o))
+  (func $asmSum2 (export "asmSum2") (param $arr i32) (param $n i32) (result f64)
+      (local $i i32)
+      (local $o f64)
+      (set_local $i (i32.const 0))
+      (set_local $o (f64.const 0.0))
+      (block
+          (loop 
+              (set_local $o
+                  (f64.add
+                      (f64.load 
+                                (i32.add
+                                        (get_local $arr)
+          		                (i32.mul (i32.const 8) (get_local $i))))
+                      (get_local $o)))
+              (set_local $i (i32.add (get_local $i) (i32.const 1)))
+              (br_if 1 (i32.eq (get_local $i) (get_local $n)))
+              (br 0)))
+      (get_local $o)))
+```
+
+
+# Browser demo: sum.html
+
+```javascript
+var memory = new WebAssembly.Memory({initial:1024});
+var imports = {
+    'env': {
+        'memory': memory
+    }
+};
+fetch('sum.wasm').then(
+    response =>
+        response.arrayBuffer()
+).catch( error =>
+         console.log(error)
+).then(bytes =>
+       WebAssembly.instantiate(bytes, imports)
+       //WebAssembly.instantiate(bytes)
+).then(results => {
+    const {asmSum, asmSum2 } = results.instance.exports;
+    const wasmInstance = results.instance;
+    memory.grow(10000);
+    console.log(wasmInstance);
+    console.log(memory);
+    function timeit(name,func,n) {
+        var t0 = performance.now();
+        for (var i = 0; i < n; i++) {
+            func();
+        }
+        var t1 = performance.now();
+        console.log("Call to "+name+" took " + (t1 - t0) + " milliseconds.");
+    }
+    const n = 10000000;
+    const p = 0;
+    let typedArray = new Float64Array(memory.buffer,p,n*4);
+    for (var i = 0 ; i < n; i++) {
+        typedArray[i] = i;
+    }
+    function jsSum(arr,n) {
+        var output = 0;
+        for (var i = 0 ; i < n; i++) {
+            output += arr[i];
+        }
+        return output;
+    };
+    const reps = 10;
+    const m = n / 2;
+
+    console.log(asmSum(p,n),asmSum(p,n)==jsSum(typedArray,n));
+    console.log(asmSum2(p,n),asmSum2(p,n)==jsSum(typedArray,n));
+    console.log(jsSum(typedArray,n));
+    
+    
+    timeit("jsSum",function(){ jsSum(typedArray,n) }, reps);
+    timeit("asmSum",function(){ asmSum(p,n) }, reps);
+    timeit("asmSum2",function(){ asmSum2(p,n) }, reps);
+
+    
+    
+}).catch(e => console.log(e));
+```
+
+
+# sum.wat performance
+
+- Firefox 76.0.1  
+  - `const n = 10000000; const reps = 10;`
+
+```
+  Call to jsSum took 186 milliseconds (18.6 ms per rep) sum.html:50:17
+  Call to wasmSum took 314 milliseconds (31.4 ms per rep) sum.html:50:17
+  Call to wasmSum2 took 126 milliseconds (12.6 ms per rep)
+```
+
+- Chromium Version 83.0.4103.61 (Official Build) Built on Ubuntu , running on Ubuntu 18.04 (64-bit)
+  - `const n = 10000000; const reps = 10;`
+
+```
+  Call to jsSum took 152.4050000000443 milliseconds (15.240500000004431 ms per rep)
+  Call to wasmSum took 506.0849999999846 milliseconds (50.60849999999846 ms per rep)
+  Call to wasmSum2 took 279.5000000000982 milliseconds (27.950000000009823 ms per rep)
+```
+
+
+# Mandelbrot
+
+- Let's look at [mandel.wat](./wabt-enabled/mandel.wat)
+- Let's look at [mandel.wasm](./wabt-enabled/mandel.wasm)
+  - You can make mandel.wasm from the commandline: `wat2wasm mandel.wat` 
+- Let's look at the JS of [mandel.html](./wabt-enabled/mandel.html)
+  - This example will compile the wasm itself
+- Performance wise it is somewhat close to javascript depending on the browser.
+
+
+# Mandelbrot: mandel.wat
+
+```wasm
+;; https://rosettacode.org/wiki/Mandelbrot_set#PPM_non_interactive
+;; GNU FDL
+;; Rosetta Code
+(module
+ (import "env" "memory" (memory 1))
+ ;; (memory $memory (export "memory") 1)
+ (func $mandel (export "mandel") (param $cx f64) (param $cy f64) (param $maxiter i32) (result i32)
+       (local $i i32)
+       (local $zx f64)
+       (local $zy f64)
+       (local $zx2 f64)
+       (local $zy2 f64)
+       (set_local $i (i32.const 0))
+       (set_local $zx (f64.const 0.0))
+       (set_local $zy (f64.const 0.0))
+       (set_local $zx2 (f64.const 0.0))
+       (set_local $zy2 (f64.const 0.0))
+       (block
+           (loop
+              (set_local $zy (f64.add
+                              (get_local $cy)
+                              (f64.mul
+                               (f64.const 2.0)
+                               (f64.mul (get_local $zx) (get_local $zy)))))
+              (set_local $zx (f64.add
+                              (get_local $cx)
+                              (f64.sub (get_local $zx2) (get_local $zy2))))
+              (set_local $zx2 (f64.mul (get_local $zx) (get_local $zx)))
+              (set_local $zy2 (f64.mul (get_local $zy) (get_local $zy)))
+              (set_local $i (i32.add (get_local $i) (i32.const 1)))
+              (br_if 1 (i32.eq (get_local $i) (get_local $maxiter)))
+              (br_if 1 (f64.ge
+                        (f64.add (get_local $zx2) (get_local $zy2)) (f64.const 4.0))) ;; escape value (2^2)
+              (br 0)))
+       (get_local $i))
+ (func $drawMandel (export "drawMandel") (param $arr i32) (param $w i32) (param $h i32) (param $xscale f64) (param $xoff f64) (param $yscale f64) (param $yoff f64) (param $iters i32) (result i32)
+       (local $i i32)
+       (local $v i32)
+       (local $x i32)
+       (local $y i32)
+       (local $cx f64)
+       (local $cy f64)
+       (set_local $y (i32.const 0))
+       (set_local $x (i32.const 0))
+       (set_local $i (i32.const 0))
+       (block $yloop
+           (loop
+              (block $xloop
+                (loop
+                   ;; 2*x/(1.0*canvasWidth) - 1.5
+                   (set_local $cx (f64.sub
+                                   (f64.mul
+                                    (get_local $xscale)
+                                    (f64.div
+                                     (f64.convert_s/i32 (get_local $x))
+                                     (f64.convert_s/i32 (get_local $w))))
+                                   (get_local $xoff)))
+                   (set_local $cy (f64.sub
+                                   (f64.mul
+                                    (get_local $yscale)
+                                    (f64.div
+                                     (f64.convert_s/i32 (get_local $y))
+                                     (f64.convert_s/i32 (get_local $h))))
+                                   (get_local $yoff)))
+                   (set_local $v (i32.and (i32.const 0xff)
+                                          (call $mandel (get_local $cx) (get_local $cy) (get_local $iters))))
+                   (i32.store8 (i32.add (get_local $i) (get_local $arr)) (get_local $v)) ;; r
+                   (set_local $i (i32.add (get_local $i) (i32.const 1)))
+                   (i32.store8 (i32.add (get_local $i) (get_local $arr)) (get_local $v)) ;; g
+                   (set_local $i (i32.add (get_local $i) (i32.const 1)))
+                   (i32.store8 (i32.add (get_local $i) (get_local $arr)) (get_local $v)) ;; b
+                   (set_local $i (i32.add (get_local $i) (i32.const 1)))
+                   (i32.store8 (i32.add (get_local $i) (get_local $arr)) (i32.const 0xff)) ;; alpha
+                   (set_local $i (i32.add (get_local $i) (i32.const 1)))
+                   (set_local $x (i32.add (get_local $x) (i32.const 1)))
+                   (br_if 1 (i32.eq (get_local $x) (get_local $w)))
+                   (br 0)))
+            (set_local $y (i32.add (get_local $y) (i32.const 1)))
+            (br_if 1 (i32.eq (get_local $y) (get_local $h)))
+            (set_local $x (i32.const 0))
+            (br 0)))
+       (i32.const 1)))
+```
+
+
+# Mandelbrot: mandel.html
+
+```javascript
+<!doctype html>
+<html>
+    <head>
+    <title>Mandel.wat</title>
+    <script src="libwabt.js"></script>
+    <script src="loadWat.js"></script>
+    </head>
+    <body style="background: white;">
+    <div width="100%" height="100vh">
+        <canvas id="canvas1" width="100%" height="100%">
+        </canvas>
+        <canvas id="canvas2" width="100%" height="100%">
+        </canvas>
+        <canvas id="canvas3" width="100%" height="100%">
+        </canvas>
+        <canvas id="canvas4" width="100%" height="100%">
+        </canvas>
+<script>
+...
+</script>
+</body>
+</html>
+```
+
+
+# Mandelbrot: mandel.html JS
+
+```javascript
+var wabt = WabtModule();
+var memory = new WebAssembly.Memory({initial:10000});
+var imports = {
+    'env': {
+        'memory': memory
+    }
+};
+var l0 = performance.now();
+loadWatURL(wabt,'mandel.wat',imports,'mandel.wat').then(results => {
+    var l1 = performance.now();
+    console.log("Retrieving, loading, assembling took " + (l1 - l0) + " milliseconds.");
+
+    const { mandel, drawMandel } = results.instance.exports;
+    const asmMandel = mandel;
+    const wasmInstance = results.instance;
+    //memory.grow(10000);
+    console.log(wasmInstance);
+    console.log(memory);
+    const p = 0;
+    let RES = 600;
+    let typedArray = new Uint8Array(memory.buffer,p,RES*RES*4);
+    function clearBuffer(buf) {
+        for (var i = 0 ; i < buf.length; i++) {
+            buf[i] = 0;
+        }
+    }
+    function timeit(name,func,n) {
+        var t0 = performance.now();
+        for (var i = 0; i < n; i++) {
+            func(i);
+        }
+        var t1 = performance.now();
+        console.log("Call to "+name+" took " + (t1 - t0) + " milliseconds.");
+    }
+    // https://rosettacode.org/wiki/Mandelbrot_set#PPM_non_interactive
+    // GNU FDL Rosetta Code
+    function jsMandel(cx,cy,maxiter) {
+        var i = 0;
+        var zx = 0;
+        var zy = 0;
+        var zx2 = 0;
+        var zy2 = 0;
+        for (i = 0 ; i < maxiter && ((zx2 + zy2) < 4.0); i++) {
+            zy = cy + 2.0 * zx * zy;
+            zx = cx + zx2 - zy2;
+            zx2 = zx * zx;
+            zy2 = zy * zy;
+        }
+        return i;
+    };
+    const reps = 100;
+    const iters = 100000;
+    console.log(jsMandel(0,0,iters) == asmMandel(0,0,iters));
+    console.log(jsMandel(2,1,iters) == asmMandel(2,1,iters));
+    timeit("jsMandel",function(i){ jsMandel(1.0/i,1.0/i,iters) }, reps);
+    timeit("asmMandel",function(i){ asmMandel(1.0/i,1.0/i,iters) }, reps);
+
+    let drawMandelPixels = function(myMandel, canvasID) {
+        var canvas = document.getElementById(canvasID);
+        var canvasWidth  = RES;
+        var canvasHeight = RES;
+        canvas.width = RES;
+        canvas.height = RES;
+        var ctx = canvas.getContext('2d');
+        var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        var data = imageData.data;
+        var buf = new ArrayBuffer(imageData.data.length);
+        var buf8 = new Uint8ClampedArray(buf);
+        var data32 = new Uint32Array(buf);
+        var citers = 256;
+        for (var y = 0; y < canvasHeight; ++y) {
+            for (var x = 0; x < canvasWidth; ++x) {
+                var index = (y * canvasWidth + x) * 4;
+                var value = myMandel(2*x/(1.0*canvasWidth) - 1.5,2*y/(1.0*canvasHeight) - 1.0,citers);
+                data[index] = data[index+1] = data[index+2] = value & 0xFF;
+                data[index+3] = 255;
+            }
+        }
+        // imageData.data.set(buf8);
+        ctx.putImageData(imageData, 0, 0);
+        canvas.style.height = "50vh";
+        console.log("Done");
+        // make sure it big enough
+    };
+    timeit("jsMandel",  () => drawMandelPixels(jsMandel, 'canvas1'),1);
+    timeit("asmMandel", () => drawMandelPixels(asmMandel,'canvas2'),1);
+    let drawMandelBuffer = function(myMandelBuf, canvasID) {
+        var canvas = document.getElementById(canvasID);
+        var canvasWidth  = RES;
+        var canvasHeight = RES;
+        canvas.width = RES;
+        canvas.height = RES;
+        var ctx = canvas.getContext('2d');
+        var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        var buf = typedArray;
+        var buf8 = new Uint8ClampedArray(buf);
+        var data32 = new Uint32Array(buf);
+        var citers = 256;
+        console.log(buf, canvasWidth, canvasHeight, 2.0, 1.5, 2.0, 1.0, citers);
+        myMandelBuf(buf, canvasWidth, canvasHeight, 2.0, 1.5, 2.0, 1.0, citers);
+        imageData.data.set(buf);
+        ctx.putImageData(imageData, 0, 0);
+        canvas.style.height = "50vh";
+        console.log("Done");
+        // make sure it big enough
+    };
+    let jsMandelBuf = function(data, w, h, xscale, xoff, yscale, yoff, iters) {
+        for (var y = 0; y < h; ++y) {
+            for (var x = 0; x < w; ++x) {
+                var index = (y * w + x) * 4;
+                var value = jsMandel(xscale*x/(1.0*w) - xoff,yscale*y/(1.0*h) - yoff,iters);
+                data[index] = data[index+1] = data[index+2] = value & 0xFF;
+                data[index+3] = 255;
+            }
+        }
+        return 1;
+    }
+    let wasmMandelBuf = function(data, w, h, xscale, xoff, yscale, yoff, iters) {
+        return drawMandel(data.byteOffset, w, h, xscale, xoff, yscale, yoff, iters);
+    }
+    clearBuffer(typedArray);
+    timeit("jsMandelBuf",    () => drawMandelBuffer(jsMandelBuf  , 'canvas3'),1);
+    clearBuffer(typedArray);
+    timeit("wasmMandelBuf",  () => drawMandelBuffer(wasmMandelBuf, 'canvas4'),1);
+    console.log(typedArray);
+}).catch(e => console.log(e));
+```
+
+
+# Mandel.wat performance
+
+- Firefox 76.0.1  
+
+```
+Call to jsMandel took 37 milliseconds. 
+Call to asmMandel took 39 milliseconds. 
+
+Call to jsMandel took 151 milliseconds. 
+Call to asmMandel took 154 milliseconds.
+Call to jsMandelBuf took 148 milliseconds.
+Call to wasmMandelBuf took 161 milliseconds.
+```
+
+- Chromium Version 83.0.4103.61 (Official Build) Built on Ubuntu , running on Ubuntu 18.04 (64-bit)
+
+```
+Call to jsMandel took 41.32499999968786 milliseconds.
+mandel.html:51 Call to asmMandel took 63.479999999799475 milliseconds.
+
+mandel.html:51 Call to jsMandel took 155.8700000000499 milliseconds.
+mandel.html:51 Call to asmMandel took 259.8849999999402 milliseconds.
+mandel.html:51 Call to jsMandelBuf took 162.40500000003522 milliseconds.
+mandel.html:51 Call to wasmMandelBuf took 237.5649999999041 milliseconds.
+```
 
 
 # Performance comments
@@ -578,10 +1030,25 @@ But you can declare memory and import it from javascript as well.
 
 
 # Where to look further
+
 - llvm
 - empscripten
 - rust
 - go
+
+
+# Conclusions
+
+- Should you use WASM?
+  - Probably not
+- Is WASM useful?
+  - Yes you can compile other languages in such a way that javascript in the browser can use that code!
+  - For integer types it is very useful  
+- Does it perform well?
+  - Yes, but not stellar
+- Do people use WASM like you demonstrated?
+  - No. I just wanted to learn basic WASM.
+  - Most people will generate WASM and use that.
 
 
 # Resources
