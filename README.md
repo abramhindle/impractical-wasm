@@ -1060,6 +1060,7 @@ mandel.html:51 Call to wasmMandelBuf took 237.5649999999041 milliseconds.
 - Colin Eberhardt, 2018-04-26, https://blog.scottlogic.com/2018/04/26/webassembly-by-hand.html
 - WebAssembly Opcodes https://pengowray.github.io/wasm-ops/
 
+
 # Demo
 
 You can write some live assembly here if you want. Knock yourself out.

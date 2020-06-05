@@ -38,6 +38,9 @@
 // - https://revealjs.com/config/
 Reveal.initialize({
     hash: true,
+    margin: 0.05,
+    width: 1280,
+    height: 720,
     // Learn about plugins: https://revealjs.com/plugins/
     plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
 });
@@ -59,7 +62,7 @@ function installCustomHandlers()  {
     if (wasms.length < 1) {
         return false; // we're not ready :(
     }
-    console.log(wasms);
+    // console.log(wasms);
     wasms = [...wasms];
     wasms.map( w => {
         var d = document.createElement("div");
