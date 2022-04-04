@@ -64,20 +64,31 @@ function installCustomHandlers()  {
     }
     // console.log(wasms);
     wasms = [...wasms];
+    var c = 0;
     wasms.map( w => {
         var d = document.createElement("div");
         var b = document.createElement("button");
         var s = document.createElement("span");
-        b.textContent = "Eval";
+        var name = "Eval"+(c++);
+        b.textContent = name;
+        w.id = name;
         console.log(b);
+        let getContent = () => {
+            if (w.children.length > 0 && w.children[0] instanceof HTMLTextAreaElement) {
+                return w.children[0].value;
+            } else {
+                return w.textContent;
+            }
+        };
         let report = e => {
-            console.log(e);
-            s.textContent = e;
-            return e;
+            out = e;
+            console.log([out,e,getContent()]);            
+            s.textContent = out;
+            return out;
         };
             
         b.addEventListener("click", e => {
-            evalWasm(w.textContent).catch( e => { console.log(e); report(e); throw e; }).then( report );
+            evalWasm(getContent()).catch( e => { console.log(e); report(e); throw e; }).then( report );
         });
         d.appendChild(b);
         d.appendChild(s);
